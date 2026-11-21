@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ollama import chat
+from backend.memory import build_context
 
 from backend.database import (
     SessionLocal,
@@ -148,16 +149,22 @@ def chat_endpoint(request: ChatRequest):
             .all()
         )
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT}
-        ]
-
-        messages.extend(
+        history_data = [
             {
                 "role": item.role,
                 "content": item.content,
             }
             for item in history
+        ]
+
+        context = build_context(history_data)
+
+        messages = context["messages"]
+
+        print(
+            f"Context tokens: {context['token_count']} | "
+            f"Messages sent: {context['message_count']} | "
+            f"Messages stored: {len(history_data)}"
         )
 
         # Generate response using Ollama

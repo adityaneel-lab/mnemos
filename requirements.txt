@@ -5,3 +5,4 @@ streamlit
 requests
 pydantic
 sqlalchemy
+tiktoken
