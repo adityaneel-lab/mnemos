@@ -6,3 +6,6 @@ requests
 pydantic
 sqlalchemy
 tiktoken
+chromadb
+sentence-transformers
+numpy<2
