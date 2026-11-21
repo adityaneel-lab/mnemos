@@ -4,3 +4,4 @@ ollama
 streamlit
 requests
 pydantic
+sqlalchemy
