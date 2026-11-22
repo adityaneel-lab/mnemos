@@ -140,6 +140,42 @@ def get_all_memories(user_id: str = "default"):
     ]
 
 
+def update_memory(
+    memory_id: str,
+    text: str,
+    user_id: str = "default",
+    category: str = "general",
+):
+    """Update a memory only if it belongs to this user."""
+
+    text = text.strip()
+    category = category.strip() or "general"
+
+    if not text:
+        return False
+
+    # Verify that the memory exists and belongs to this user
+    result = collection.get(
+        ids=[memory_id],
+        where={"user_id": user_id},
+    )
+
+    if not result["ids"]:
+        return False
+
+    # Update the document and its metadata
+    collection.update(
+        ids=[memory_id],
+        documents=[text],
+        metadatas=[{
+            "user_id": user_id,
+            "category": category,
+        }],
+    )
+
+    return True
+
+
 def delete_memory(memory_id: str, user_id: str = "default"):
     """Delete a memory only if it belongs to this user."""
 

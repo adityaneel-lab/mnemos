@@ -10,7 +10,48 @@ st.set_page_config(
 )
 
 st.title("🧠 RecallAI")
-st.caption("Day 2 — Persistent Conversation History")
+st.caption("Context-aware AI with real memory")
+
+
+def edit_memory_form(memory):
+    memory_id = memory["id"]
+
+    with st.form(key=f"edit_form_{memory_id}"):
+        new_text = st.text_area(
+            "Memory",
+            value=memory["text"],
+        )
+
+        new_category = st.text_input(
+            "Category",
+            value=memory.get("category", "general"),
+        )
+
+        submitted = st.form_submit_button("Save changes")
+
+        if submitted:
+            if not new_text.strip():
+                st.error("Memory cannot be empty.")
+                return
+
+            try:
+                response = requests.put(
+                    f"{API_URL}/memories/{memory_id}",
+                    json={
+                        "text": new_text,
+                        "category": new_category,
+                    },
+                    timeout=10,
+                )
+                response.raise_for_status()
+
+                st.success("Memory updated!")
+                st.session_state.edit_memory_id = None
+                st.rerun()
+
+            except requests.RequestException as e:
+                st.error(f"Update failed: {e}")
+
 
 # Fetch saved conversations
 try:
@@ -68,6 +109,81 @@ with st.sidebar:
         )
 
         st.session_state.selected_conversation_id = selected_id
+
+        st.divider()
+
+        st.header("🧠 Your memories")
+
+        if st.button("🔄 Refresh memories", use_container_width=True):
+            st.rerun()
+
+        try:
+            memory_response = requests.get(
+                f"{API_URL}/memories",
+                timeout=10,
+            )
+            memory_response.raise_for_status()
+            memories = memory_response.json()
+
+            if memories:
+                st.caption(f"{len(memories)} saved memories")
+
+                ####
+                # Group memories by category
+                grouped_memories = {}
+
+                for memory in memories:
+                    category = memory.get("category", "general")
+                    grouped_memories.setdefault(category, []).append(memory)
+
+                categories = ["All"] + sorted(grouped_memories.keys())
+
+                selected_category = st.selectbox(
+                    "Filter by category",
+                    categories,
+                )
+
+                # Display each category
+                for category, category_memories in grouped_memories.items():
+                    if selected_category != "All" and category != selected_category:
+                        continue
+
+                    with st.expander(
+                        f"{category.replace('_', ' ').title()} "
+                        f"({len(category_memories)})",
+                        expanded=True,
+                    ):
+                        for memory in category_memories:
+                            with st.container(border=True):
+                                st.write(memory["text"])
+
+                                # Keep your existing Edit functionality here
+                                if st.button("✏️ Edit", key=f"edit_{memory['id']}"):
+                                    st.session_state.edit_memory_id = memory["id"]
+                                    st.rerun()
+
+                                if st.session_state.get("edit_memory_id") == memory["id"]:
+                                    edit_memory_form(memory)
+
+                                if st.button("🗑️ Delete", key=f"delete_memory_{memory['id']}",use_container_width=True):
+                                    try:
+                                        delete_response = requests.delete(
+                                            f"{API_URL}/memories/{memory['id']}",
+                                            timeout=10,
+                                        )
+                                        delete_response.raise_for_status()
+                                        st.success("Memory deleted!")
+                                        st.rerun()
+
+                                    except requests.RequestException as e:
+                                        st.error(f"Could not delete memory: {e}")
+
+            else:
+                st.info("No saved memories yet.")
+
+        except requests.RequestException as e:
+            st.error(f"Could not load memories: {e}")
+
 
 # Create the first conversation if none exists
 if st.session_state.selected_conversation_id is None:

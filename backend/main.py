@@ -17,6 +17,7 @@ from backend.database import (
 from backend.long_term_memory import (
     search_memories,
     get_all_memories,
+    update_memory,
     delete_memory,
     filter_relevant_memories,
 )
@@ -53,6 +54,11 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     conversation_id: int
     reply: str
+
+
+class MemoryUpdateRequest(BaseModel):
+    text: str
+    category: str = "general"
 
 
 @app.get("/")
@@ -130,6 +136,38 @@ def get_messages(conversation_id: int):
 @app.get("/memories")
 def list_memories():
     return get_all_memories(user_id="default")
+
+
+@app.put("/memories/{memory_id}")
+def edit_memory(
+    memory_id: str,
+    request: MemoryUpdateRequest,
+):
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Memory text cannot be empty",
+        )
+
+    updated = update_memory(
+        memory_id=memory_id,
+        text=request.text,
+        user_id="default",
+        category=request.category,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="Memory not found",
+        )
+
+    return {
+        "status": "updated",
+        "memory_id": memory_id,
+        "text": request.text.strip(),
+        "category": request.category.strip() or "general",
+    }
 
 
 @app.delete("/memories/{memory_id}")
@@ -241,14 +279,20 @@ def chat_endpoint(request: ChatRequest):
 
         messages = context["messages"]
 
-        print("========== CONTEXT STATS ==========")
+        print("\n========== RECALLAI CONTEXT ==========")
+
+        for message in context["messages"]:
+            print(f"\nROLE: {message['role']}")
+            print(f"CONTENT: {message['content']}")
+
+        print("\n========== CONTEXT STATISTICS ==========")
         print("Input tokens:", context["token_count"])
-        print("Input budget:", MAX_CONTEXT_TOKENS - MAX_OUTPUT_TOKENS)
-        print("Output budget:", context["output_budget"])
         print("History messages:", context["history_count"])
         print("Retrieved memories:", context["memory_count"])
-        print("Total context budget:", context["total_budget"])
-        print("===================================")
+        print("Output budget:", context["output_budget"])
+        print("Total budget:", context["total_budget"])
+
+        print("========================================\n")
 
         # Generate response using Ollama
         response = chat(
