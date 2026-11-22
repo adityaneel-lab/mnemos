@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ollama import chat
 from backend.memory import build_context
 from backend.memory_extraction import extract_and_save_memories
+from backend.context_manager import build_context
 
 from backend.database import (
     SessionLocal,
@@ -17,10 +18,16 @@ from backend.long_term_memory import (
     search_memories,
     get_all_memories,
     delete_memory,
+    filter_relevant_memories,
 )
 
 from backend.memory_extraction import (
     extract_and_save_memories,
+)
+
+from backend.memory import (
+    MAX_CONTEXT_TOKENS,
+    MAX_OUTPUT_TOKENS,
 )
 
 app = FastAPI(
@@ -200,13 +207,25 @@ def chat_endpoint(request: ChatRequest):
             for item in history
         ]
 
-        relevant_memories = search_memories(
+        # 1. Retrieve memories from ChromaDB
+        retrieved_memories = search_memories(
             query=request.message,
             user_id="default",
             limit=5,
         )
 
-        context = build_context(history_data)
+        # 2. Filter out irrelevant memories
+        relevant_memories = filter_relevant_memories(
+            retrieved_memories,
+            max_distance=0.60,
+        )
+
+        # 3. Build unified context
+        context = build_context(
+            history=history_data,
+            memories=relevant_memories,
+            user_message=request.message,
+        )
 
         if relevant_memories:
             memory_text = "\n".join(
@@ -222,16 +241,23 @@ def chat_endpoint(request: ChatRequest):
 
         messages = context["messages"]
 
-        print(
-            f"Context tokens: {context['token_count']} | "
-            f"Messages sent: {context['message_count']} | "
-            f"Messages stored: {len(history_data)}"
-        )
+        print("========== CONTEXT STATS ==========")
+        print("Input tokens:", context["token_count"])
+        print("Input budget:", MAX_CONTEXT_TOKENS - MAX_OUTPUT_TOKENS)
+        print("Output budget:", context["output_budget"])
+        print("History messages:", context["history_count"])
+        print("Retrieved memories:", context["memory_count"])
+        print("Total context budget:", context["total_budget"])
+        print("===================================")
 
         # Generate response using Ollama
         response = chat(
             model=MODEL_NAME,
-            messages=messages,
+            messages=context["messages"],
+            think=False,
+            options={
+                "num_predict": context["output_budget"]
+            },
         )
 
         reply = response.message.content

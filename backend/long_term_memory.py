@@ -76,20 +76,46 @@ def search_memories(
     user_id: str = "default",
     limit: int = 5,
 ):
-    """Retrieve memories semantically related to a query."""
+    total = collection.count()
+
+    if total == 0:
+        return []
 
     results = collection.query(
         query_texts=[query],
-        n_results=limit,
+        n_results=min(limit, total),
         where={"user_id": user_id},
+        include=["documents", "distances", "metadatas"],
     )
 
     memories = []
 
-    if results["documents"]:
-        memories = results["documents"][0]
+    if results["documents"] and results["documents"][0]:
+        for document, distance, metadata in zip(
+            results["documents"][0],
+            results["distances"][0],
+            results["metadatas"][0],
+        ):
+            memories.append({
+                "text": document,
+                "distance": distance,
+                "category": metadata.get("category", "general"),
+            })
 
     return memories
+
+
+def filter_relevant_memories(
+    memories: list,
+    max_distance: float = 0.60,
+):
+    relevant_memories = []
+
+    for memory in memories:
+        if memory["distance"] <= max_distance:
+            relevant_memories.append(memory)
+
+    return relevant_memories
 
 
 def get_all_memories(user_id: str = "default"):

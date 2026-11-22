@@ -2,7 +2,8 @@
 import tiktoken
 
 # A configurable budget for conversation messages.
-MAX_CONTEXT_TOKENS = 500
+MAX_CONTEXT_TOKENS = 2000
+MAX_OUTPUT_TOKENS = 500
 
 SYSTEM_PROMPT = """
 You are RecallAI, a helpful conversational assistant.
