@@ -1,16 +1,15 @@
-
 import streamlit as st
 import requests
 
 API_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(
-    page_title="RecallAI",
+    page_title="MNEMOS",
     page_icon="🧠",
 )
 
-st.title("🧠 RecallAI")
-st.caption("Context-aware AI with real memory")
+st.title("🧠 MNEMOS")
+st.caption("An AI That Remembers")
 
 
 def edit_memory_form(memory):

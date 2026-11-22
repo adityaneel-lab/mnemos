@@ -6,6 +6,8 @@ from chromadb.utils.embedding_functions import (
     SentenceTransformerEmbeddingFunction,
 )
 
+DUPLICATE_THRESHOLD = 0.10
+
 # Persistent local vector database
 client = chromadb.PersistentClient(
     path="./chroma_db"
@@ -28,14 +30,14 @@ def save_memory(
     user_id: str = "default",
     category: str = "general",
 ):
-    """Save a memory, avoiding close semantic duplicates."""
+    """Save a memory while avoiding close semantic duplicates."""
 
     text = text.strip()
+    category = category.strip().lower() or "general"
 
     if not text:
         return
 
-    # Search existing memories for a close match
     existing = collection.query(
         query_texts=[text],
         n_results=1,
@@ -44,20 +46,18 @@ def save_memory(
 
     if existing["ids"] and existing["ids"][0]:
         distance = existing["distances"][0][0]
+        existing_id = existing["ids"][0][0]
 
-        # Update an existing memory if it is very similar
-        if distance < 0.15:
-            memory_id = existing["ids"][0][0]
-
+        if distance <= DUPLICATE_THRESHOLD:
             collection.update(
-                ids=[memory_id],
+                ids=[existing_id],
                 documents=[text],
                 metadatas=[{
                     "user_id": user_id,
                     "category": category,
                 }],
             )
-            return
+            return existing_id
 
     memory_id = str(uuid.uuid4())
 
@@ -69,6 +69,8 @@ def save_memory(
             "category": category,
         }],
     )
+
+    return memory_id
 
 
 def search_memories(

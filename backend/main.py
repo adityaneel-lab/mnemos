@@ -1,11 +1,12 @@
-
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
 from ollama import chat
 from backend.memory import build_context
 from backend.memory_extraction import extract_and_save_memories
 from backend.context_manager import build_context
+from backend.config import USER_ID, MODEL_NAME
+import logging
 
 from backend.database import (
     SessionLocal,
@@ -31,6 +32,13 @@ from backend.memory import (
     MAX_OUTPUT_TOKENS,
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="Real Memory Chatbot",
     version="0.2.0",
@@ -45,10 +53,18 @@ SYSTEM_PROMPT = (
 
 create_tables()
 
-
 class ChatRequest(BaseModel):
-    conversation_id: int
-    message: str
+    conversation_id: int = Field(..., gt=0)
+    message: str = Field(..., min_length=1, max_length=4000)
+
+    @validator("message")
+    def validate_message(cls, value):
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Message cannot be empty or contain only spaces.")
+
+        return value
 
 
 class ChatResponse(BaseModel):
@@ -135,7 +151,7 @@ def get_messages(conversation_id: int):
 
 @app.get("/memories")
 def list_memories():
-    return get_all_memories(user_id="default")
+    return get_all_memories(user_id=USER_ID)
 
 
 @app.put("/memories/{memory_id}")
@@ -152,7 +168,7 @@ def edit_memory(
     updated = update_memory(
         memory_id=memory_id,
         text=request.text,
-        user_id="default",
+        user_id=USER_ID,
         category=request.category,
     )
 
@@ -174,7 +190,7 @@ def edit_memory(
 def remove_memory(memory_id: str):
     deleted = delete_memory(
         memory_id=memory_id,
-        user_id="default",
+        user_id=USER_ID,
     )
 
     if not deleted:
@@ -220,12 +236,12 @@ def chat_endpoint(request: ChatRequest):
         db.commit()
 
         # Extract and store long-term memories
-        saved_memories = extract_and_save_memories(
-            user_message=request.message,
-            user_id="default",
-        )
+        saved_memories = extract_and_save_memories(user_message=request.message)
 
-        print("New memories:", saved_memories)
+        logger.info(
+            "Memory extraction completed. Saved %d memories.",
+            len(saved_memories),
+        )
 
         # Retrieve the complete conversation history
         history = (
@@ -248,7 +264,7 @@ def chat_endpoint(request: ChatRequest):
         # 1. Retrieve memories from ChromaDB
         retrieved_memories = search_memories(
             query=request.message,
-            user_id="default",
+            user_id=USER_ID,
             limit=5,
         )
 
@@ -279,20 +295,20 @@ def chat_endpoint(request: ChatRequest):
 
         messages = context["messages"]
 
-        print("\n========== RECALLAI CONTEXT ==========")
+        # print("\n========== RECALLAI CONTEXT ==========")
 
-        for message in context["messages"]:
-            print(f"\nROLE: {message['role']}")
-            print(f"CONTENT: {message['content']}")
+        # for message in context["messages"]:
+        #     print(f"\nROLE: {message['role']}")
+        #     print(f"CONTENT: {message['content']}")
 
-        print("\n========== CONTEXT STATISTICS ==========")
-        print("Input tokens:", context["token_count"])
-        print("History messages:", context["history_count"])
-        print("Retrieved memories:", context["memory_count"])
-        print("Output budget:", context["output_budget"])
-        print("Total budget:", context["total_budget"])
+        # print("\n========== CONTEXT STATISTICS ==========")
+        # print("Input tokens:", context["token_count"])
+        # print("History messages:", context["history_count"])
+        # print("Retrieved memories:", context["memory_count"])
+        # print("Output budget:", context["output_budget"])
+        # print("Total budget:", context["total_budget"])
 
-        print("========================================\n")
+        # print("========================================\n")
 
         # Generate response using Ollama
         response = chat(
@@ -325,6 +341,8 @@ def chat_endpoint(request: ChatRequest):
         raise
     except Exception:
         db.rollback()
+        logger.exception("Failed to process chat request")
+        
         raise HTTPException(
             status_code=500,
             detail="Failed to process chat request. Check backend logs.",
